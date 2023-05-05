@@ -646,6 +646,71 @@ vast_make_spatial_lists <- function(extrap_grid, vast_settings, tidy_mod_data, o
     out_dir <- here::here()
   }
 
+  # Functions
+  Prepare_User_Extrapolation_Data_Fn<- function (input_grid, strata.limits = NULL, projargs = NA, zone = NA,  flip_around_dateline = TRUE, ...) 
+{
+
+    if (FALSE) {
+        input_grid = extrap_df
+        strata.limits = data.frame("STRATA" = c("All", "NMFS", "DFO"))
+        projargs = NA
+        zone = NA
+        flip_around_dateline = TRUE
+    }
+    
+    if (is.null(strata.limits)) {
+        strata.limits = data.frame(STRATA = "All_areas")
+    }
+    message("Using strata ", strata.limits)
+    Data_Extrap <- input_grid
+    Area_km2_x = Data_Extrap[, "Area_km2"]
+    Tmp = cbind(BEST_LAT_DD = Data_Extrap[, "Lat"], BEST_LON_DD = Data_Extrap[,  "Lon"])
+    if ("Depth" %in% colnames(Data_Extrap)) {
+        Tmp = cbind(Tmp, BEST_DEPTH_M = Data_Extrap[, "Depth"])
+    }
+    if("STRATA" %in% colnames(Data_Extrap)){
+        Tmp = cbind(Tmp, BEST_STRATA = as.character(Data_Extrap[, "STRATA"]))
+    }
+    a_el = as.data.frame(matrix(NA, nrow = nrow(Data_Extrap), ncol = nrow(strata.limits), dimnames = list(NULL, strata.limits[, "STRATA"])))
+    for (l in 1:ncol(a_el)) {
+        a_el[, l] = apply(Tmp, MARGIN = 1, FUN = match_strata_fn, 
+            strata_dataframe = strata.limits[l, , drop = FALSE])
+        a_el[, l] = ifelse(is.na(a_el[, l]), 0, Area_km2_x)
+    }
+    tmpUTM = project_coordinates(X = Data_Extrap[, "Lon"], Y = Data_Extrap[, 
+        "Lat"], projargs = projargs, zone = zone, flip_around_dateline = flip_around_dateline)
+    Data_Extrap = cbind(Data_Extrap, Include = 1)
+    if (all(c("E_km", "N_km") %in% colnames(Data_Extrap))) {
+        Data_Extrap[, c("E_km", "N_km")] = tmpUTM[, c("X", "Y")]
+    } else {
+        Data_Extrap = cbind(Data_Extrap, E_km = tmpUTM[, "X"], N_km = tmpUTM[, "Y"])
+    }
+    Return = list(a_el = a_el, Data_Extrap = Data_Extrap, zone = attr(tmpUTM, 
+        "zone"), projargs = attr(tmpUTM, "projargs"), flip_around_dateline = flip_around_dateline, 
+        Area_km2_x = Area_km2_x)
+    return(Return)
+}
+
+match_strata_fn<-  function (x, strata_dataframe)  {
+    match_latitude_TF = match_longitude_TF = match_depth_TF = match_strata_TF = rep(TRUE, nrow(strata_dataframe))
+    if (all(c("south_border", "north_border") %in% names(strata_dataframe))) {
+        match_latitude_TF = as.numeric(x["BEST_LAT_DD"]) > strata_dataframe[, "south_border"] & as.numeric(x["BEST_LAT_DD"]) <=  strata_dataframe[, "north_border"]
+    }
+    if (all(c("west_border", "east_border") %in% names(strata_dataframe))) {
+        match_longitude_TF = as.numeric(x["BEST_LON_DD"]) > strata_dataframe[, "west_border"] & as.numeric(x["BEST_LON_DD"]) <=  strata_dataframe[, "east_border"]
+    }
+    if (all(c("shallow_border", "deep_border") %in% names(strata_dataframe))) {
+        match_depth_TF = as.numeric(x["BEST_DEPTH_M"]) > strata_dataframe[, "shallow_border"] & as.numeric(x["BEST_DEPTH_M"]) <= strata_dataframe[, "deep_border"]
+    }
+    if(names(strata_dataframe) == "STRATA"){
+        match_strata_TF = as.character(x["BEST_STRATA"]) == strata_dataframe[, "STRATA"]
+    }
+    Char = as.character(strata_dataframe[match_latitude_TF & match_longitude_TF &  match_depth_TF & match_strata_TF, "STRATA"])
+    return(ifelse(length(Char) == 0, NA, Char))
+}
+
+  assignInNamespace("match_strata_fn", match_strata_fn, "FishStatsUtils")
+  assignInNamespace("Prepare_User_Extrapolation_Data_Fn", Prepare_User_Extrapolation_Data_Fn, "FishStatsUtils")
 
   # Run FishStatsUtiles::make_extrapolation_info
   vast_extrap_info <- make_extrapolation_info(Region = vast_settings$Region, strata.limits = vast_settings$strata.limits, input_grid = extrap_grid, DirPath = out_dir)
