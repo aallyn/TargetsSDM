@@ -2704,7 +2704,7 @@ make_extrapolation_info_aja <- function(Region, projargs = NA, zone = NA, strata
   return(Return)
 }
 
-fit_model_aja <- function(settings, Method, Lat_i, Lon_i, t_i, b_i, a_i, c_iz = rep(0, length(b_i)), v_i = rep(0, length(b_i)), category_names = NULL, working_dir = paste0(getwd(), "/"), X1config_cp = NULL, X2config_cp = NULL, covariate_data, X1_formula = ~0, X2_formula = ~0, Q1config_k = NULL, Q2config_k = NULL, catchability_data, Q1_formula = ~0, Q2_formula = ~0, newtonsteps = 1, silent = TRUE, build_model = TRUE, run_model = TRUE, test_fit = TRUE, framework = "TMBad", use_new_epsilon = TRUE, ...) {
+fit_model_aja <- function(settings, Method, Lat_i, Lon_i, t_i, b_i, a_i, c_iz = rep(0, length(b_i)), v_i = rep(0, length(b_i)), category_names = NULL, working_dir = paste0(getwd(), "/"), X1config_cp = NULL, X2config_cp = NULL, covariate_data, X1_formula = ~0, X2_formula = ~0, Q1config_k = NULL, Q2config_k = NULL, catchability_data, Q1_formula = ~0, Q2_formula = ~0, newtonsteps = 1, silent = TRUE, build_model = TRUE, run_model = TRUE, test_fit = TRUE, framework = "TMBad", use_new_epsilon = TRUE, model_selection = TRUE, ...) {
   if (FALSE) {
     # Run vast_fit_sdm first...
 
@@ -2825,6 +2825,7 @@ fit_model_aja <- function(settings, Method, Lat_i, Lon_i, t_i, b_i, a_i, c_iz = 
       stop("Please change model structure to avoid problems with parameter estimates and then re-try; see details in `?check_fit`\n", call. = FALSE)
     }
   }
+
   if ((use_new_epsilon == TRUE) & (settings$bias.correct == TRUE) & (framework == "TMBad") & ("Index_ctl" %in% settings$vars_to_correct)) {
     settings$vars_to_correct = setdiff(settings$vars_to_correct, c("Index_ctl", "Index_cyl"))
     if (length(settings$vars_to_correct) == 0) {
@@ -2832,59 +2833,105 @@ fit_model_aja <- function(settings, Method, Lat_i, Lon_i, t_i, b_i, a_i, c_iz = 
     }
     settings$vars_to_correct = c(settings$vars_to_correct, "eps_Index_ctl")
   }
-  
-  optimize_args_default2 <- list(obj = tmb_list$Obj, lower = tmb_list$Lower, upper = tmb_list$Upper, savedir = working_dir, bias.correct = settings$bias.correct, newtonsteps = newtonsteps, bias.correct.control = list(sd = FALSE, split = NULL, nsplit = 1, vars_to_correct = settings$vars_to_correct), control = list(eval.max = 10000, iter.max = 10000, trace = 1), loopnum = 1, getJointPrecision = TRUE, start_time_elapsed = parameter_estimates1$time_for_run)
-  optimize_args_input2 <- combine_lists(input = extra_args, default = optimize_args_default2, args_to_use = formalArgs(TMBhelper::fit_tmb))
-  optimize_args_input2 <- combine_lists(input = list(startpar = parameter_estimates1$par), default = optimize_args_input2)
-  parameter_estimates2 <- do.call(what = TMBhelper::fit_tmb, args = optimize_args_input2)
 
-  if ((use_new_epsilon == TRUE) & (framework == "TMBad") & ("eps_Index_ctl" %in% settings$vars_to_correct) & !is.null(parameter_estimates2$SD)) {
-    message("\n### Applying faster epsilon bias-correction estimator")
-    fit = list(parameter_estimates = parameter_estimates2, tmb_list = tmb_list, input_args = list(model_args_input = model_args_input))
-    parameter_estimates2$SD = apply_epsilon(fit)
-  }
-
-  if ("par" %in% names(parameter_estimates2)) {
-    if (!is.null(tmb_list$Obj$env$intern) && tmb_list$Obj$env$intern == TRUE) {
-      Report = as.list(tmb_list$Obj$env$reportenv)
+  if(model_selection){
+    # Return fixed effects parameter estimates for model selection rather than estimating random effects parameters and then stopping...
+    message("Returning inner optimization results and FEs for model selection")
+    if ("par" %in% names(parameter_estimates1)) {
+      if (!is.null(tmb_list$Obj$env$intern) && tmb_list$Obj$env$intern == TRUE) {
+        Report = as.list(tmb_list$Obj$env$reportenv)
+      } else {
+        Report = tmb_list$Obj$report()
+      }
+      ParHat = tmb_list$Obj$env$parList(parameter_estimates1$par)
+      Report = amend_output(Report = Report, TmbData = data_list, Map = tmb_list$Map, Sdreport = parameter_estimates1$SD, year_labels = year_labels, category_names = category_names, extrapolation_list = extrapolation_list)
     } else {
-      Report = tmb_list$Obj$report()
+      Report = ParHat = "Model is not converged"
     }
-    ParHat = tmb_list$Obj$env$parList(parameter_estimates2$par)
-    Report = amend_output(Report = Report, TmbData = data_list, Map = tmb_list$Map, Sdreport = parameter_estimates2$SD, year_labels = year_labels, category_names = category_names, extrapolation_list = extrapolation_list)
-  } else {
-    Report = ParHat = "Model is not converged"
-  }
+    input_args <- list(extra_args = extra_args, extrapolation_args_input = extrapolation_args_input, model_args_input = model_args_input, spatial_args_input = spatial_args_input, optimize_args_input1 = optimize_args_input1, optimize_args_input2 = NULL, data_args_input = data_args_input)
+    Return <- list(data_frame = data_frame, extrapolation_list = extrapolation_list, spatial_list = spatial_list, data_list = data_list, tmb_list = tmb_list, parameter_estimates = parameter_estimates1, Report = Report, ParHat = ParHat, year_labels = year_labels, years_to_plot = years_to_plot, settings = settings, input_args = input_args, X1config_cp = X1config_cp, X2config_cp = X2config_cp, covariate_data = covariate_data, X1_formula = X1_formula, X2_formula = X2_formula, Q1config_k = Q1config_k, Q2config_k = Q1config_k, catchability_data = catchability_data, Q1_formula = Q1_formula, Q2_formula = Q2_formula, total_time = Sys.time() - start_time)
+    
+    Return$effects <- list()
+    if (!is.null(catchability_data)) {
+      catchability_data_full <- data.frame(catchability_data, linear_predictor = 0)
+      Q1_formula_full <- update.formula(Q1_formula, linear_predictor ~ . + 0)
+      call_Q1 <- lm(Q1_formula_full, data = catchability_data_full)$call
+      Q2_formula_full <- update.formula(Q2_formula, linear_predictor ~ . + 0)
+      call_Q2 <- lm(Q2_formula_full, data = catchability_data_full)$call
+      Return$effects <- c(Return$effects, list(call_Q1 = call_Q1, call_Q2 = call_Q2, catchability_data_full = catchability_data_full))
+    }
+    if (!is.null(covariate_data)) {
+      covariate_data_full <- data.frame(covariate_data, linear_predictor = 0)
+      X1_formula_full <- update.formula(X1_formula, linear_predictor ~ . + 0)
+      call_X1 <- lm(X1_formula_full, data = covariate_data_full)$call
+      X2_formula_full <- update.formula(X2_formula, linear_predictor ~ . + 0)
+      call_X2 <- lm(X2_formula_full, data = covariate_data_full)$call
+      Return$effects <- c(Return$effects, list(call_X1 = call_X1, call_X2 = call_X2, covariate_data_full = covariate_data_full))
+    }
   
-
-  input_args <- list(extra_args = extra_args, extrapolation_args_input = extrapolation_args_input, model_args_input = model_args_input, spatial_args_input = spatial_args_input, optimize_args_input1 = optimize_args_input1, optimize_args_input2 = optimize_args_input2, data_args_input = data_args_input)
-  Return <- list(data_frame = data_frame, extrapolation_list = extrapolation_list, spatial_list = spatial_list, data_list = data_list, tmb_list = tmb_list, parameter_estimates = parameter_estimates2, Report = Report, ParHat = ParHat, year_labels = year_labels, years_to_plot = years_to_plot, settings = settings, input_args = input_args, X1config_cp = X1config_cp, X2config_cp = X2config_cp, covariate_data = covariate_data, X1_formula = X1_formula, X2_formula = X2_formula, Q1config_k = Q1config_k, Q2config_k = Q1config_k, catchability_data = catchability_data, Q1_formula = Q1_formula, Q2_formula = Q2_formula, total_time = Sys.time() - start_time)
-
-  Return$effects <- list()
-  if (!is.null(catchability_data)) {
-    catchability_data_full <- data.frame(catchability_data, linear_predictor = 0)
-    Q1_formula_full <- update.formula(Q1_formula, linear_predictor ~ . + 0)
-    call_Q1 <- lm(Q1_formula_full, data = catchability_data_full)$call
-    Q2_formula_full <- update.formula(Q2_formula, linear_predictor ~ . + 0)
-    call_Q2 <- lm(Q2_formula_full, data = catchability_data_full)$call
-    Return$effects <- c(Return$effects, list(call_Q1 = call_Q1, call_Q2 = call_Q2, catchability_data_full = catchability_data_full))
-  }
-  if (!is.null(covariate_data)) {
-    covariate_data_full <- data.frame(covariate_data, linear_predictor = 0)
-    X1_formula_full <- update.formula(X1_formula, linear_predictor ~ . + 0)
-    call_X1 <- lm(X1_formula_full, data = covariate_data_full)$call
-    X2_formula_full <- update.formula(X2_formula, linear_predictor ~ . + 0)
-    call_X2 <- lm(X2_formula_full, data = covariate_data_full)$call
-    Return$effects <- c(Return$effects, list(call_X1 = call_X1, call_X2 = call_X2, covariate_data_full = covariate_data_full))
-  }
-
   # Add stuff for marginaleffects package
   Return$last.par.best<- tmb_list$Obj$env$last.par.best
-
+  
   # Class and return
   class(Return) <- "fit_model"
   return(Return)
+  } else {
+    message("Running outer optimization for REs")
+    # Proceed to estimate random effects and then return
+    optimize_args_default2 <- list(obj = tmb_list$Obj, lower = tmb_list$Lower, upper = tmb_list$Upper, savedir = working_dir, bias.correct = settings$bias.correct, newtonsteps = newtonsteps, bias.correct.control = list(sd = FALSE, split = NULL, nsplit = 1, vars_to_correct = settings$vars_to_correct), control = list(eval.max = 10000, iter.max = 10000, trace = 1), loopnum = 1, getJointPrecision = TRUE, start_time_elapsed = parameter_estimates1$time_for_run)
+    optimize_args_input2 <- combine_lists(input = extra_args, default = optimize_args_default2, args_to_use = formalArgs(TMBhelper::fit_tmb))
+    optimize_args_input2 <- combine_lists(input = list(startpar = parameter_estimates1$par), default = optimize_args_input2)
+    parameter_estimates2 <- do.call(what = TMBhelper::fit_tmb, args = optimize_args_input2)
+    
+    if ((use_new_epsilon == TRUE) & (framework == "TMBad") & ("eps_Index_ctl" %in% settings$vars_to_correct) & !is.null(parameter_estimates2$SD)) {
+    message("\n### Applying faster epsilon bias-correction estimator")
+      fit = list(parameter_estimates = parameter_estimates2, tmb_list = tmb_list, input_args = list(model_args_input = model_args_input))
+      parameter_estimates2$SD = apply_epsilon(fit)
+    }
+    
+    if ("par" %in% names(parameter_estimates2)) {
+      if (!is.null(tmb_list$Obj$env$intern) && tmb_list$Obj$env$intern == TRUE) {
+        Report = as.list(tmb_list$Obj$env$reportenv)
+      } else {
+        Report = tmb_list$Obj$report()
+      }
+
+      ParHat = tmb_list$Obj$env$parList(parameter_estimates2$par)
+      Report = amend_output(Report = Report, TmbData = data_list, Map = tmb_list$Map, Sdreport = parameter_estimates2$SD, year_labels = year_labels, category_names = category_names, extrapolation_list = extrapolation_list)
+    } else {
+      Report = ParHat = "Model is not converged"
+    }
+    
+    input_args <- list(extra_args = extra_args, extrapolation_args_input = extrapolation_args_input, model_args_input = model_args_input, spatial_args_input = spatial_args_input, optimize_args_input1 = optimize_args_input1, optimize_args_input2 = optimize_args_input2, data_args_input = data_args_input)
+    Return <- list(data_frame = data_frame, extrapolation_list = extrapolation_list, spatial_list = spatial_list, data_list = data_list, tmb_list = tmb_list, parameter_estimates = parameter_estimates2, Report = Report, ParHat = ParHat, year_labels = year_labels, years_to_plot = years_to_plot, settings = settings, input_args = input_args, X1config_cp = X1config_cp, X2config_cp = X2config_cp, covariate_data = covariate_data, X1_formula = X1_formula, X2_formula = X2_formula, Q1config_k = Q1config_k, Q2config_k = Q1config_k, catchability_data = catchability_data, Q1_formula = Q1_formula, Q2_formula = Q2_formula, total_time = Sys.time() - start_time)
+    Return$effects <- list()
+    
+    if (!is.null(catchability_data)) {
+      catchability_data_full <- data.frame(catchability_data, linear_predictor = 0)
+      Q1_formula_full <- update.formula(Q1_formula, linear_predictor ~ . + 0)
+      call_Q1 <- lm(Q1_formula_full, data = catchability_data_full)$call
+      Q2_formula_full <- update.formula(Q2_formula, linear_predictor ~ . + 0)
+      call_Q2 <- lm(Q2_formula_full, data = catchability_data_full)$call
+      Return$effects <- c(Return$effects, list(call_Q1 = call_Q1, call_Q2 = call_Q2, catchability_data_full = catchability_data_full))
+    }
+    if (!is.null(covariate_data)) {
+      covariate_data_full <- data.frame(covariate_data, linear_predictor = 0)
+      X1_formula_full <- update.formula(X1_formula, linear_predictor ~ . + 0)
+      call_X1 <- lm(X1_formula_full, data = covariate_data_full)$call
+      X2_formula_full <- update.formula(X2_formula, linear_predictor ~ . + 0)
+      call_X2 <- lm(X2_formula_full, data = covariate_data_full)$call
+      Return$effects <- c(Return$effects, list(call_X1 = call_X1, call_X2 = call_X2, covariate_data_full = covariate_data_full))
+    }
+    
+    # Add stuff for marginaleffects package
+    Return$last.par.best <- tmb_list$Obj$env$last.par.best
+    
+    # Class and return
+    class(Return) <- "fit_model"
+    return(Return)
+  }
 }
+
 
 vast_read_region_shape <- function(region_shapefile_dir) {
   region_file <- list.files(region_shapefile_dir, pattern = ".shp$", full.names = TRUE)
@@ -3883,7 +3930,7 @@ vast_mesh_to_sf <- function(vast_fit, crs_transform = "+proj=longlat +datum=WGS8
 #'
 #' @export
 
-vast_fit_plot_spatial <- function(vast_fit, manual_pred_df, pred_grid, spatial_var, nice_category_names, pred_label, mask, all_times = all_times, plot_times = NULL, land_sf, xlim, ylim, lab_lat = 33.75, lab_lon = -67.5, panel_or_gif = "gif", out_dir, land_color = "#d9d9d9", panel_cols = NULL, panel_rows = NULL, ...) {
+vast_fit_plot_spatial <- function(vast_fit, manual_pred_df, pred_grid, spatial_var, nice_category_names, pred_label, climate_scenario = "", mask, all_times = all_times, plot_times = NULL, land_sf, xlim, ylim, lab_lat = 33.75, lab_lon = -67.5, panel_or_gif = "gif", out_dir, land_color = "#d9d9d9", panel_cols = NULL, panel_rows = NULL, ...) {
   if (FALSE) {
     tar_load(vast_fit)
     template <- raster("~/GitHub/sdm_workflow/scratch/aja/TargetsSDM/data/supporting/HighResTemplate.grd")
@@ -3926,24 +3973,26 @@ vast_fit_plot_spatial <- function(vast_fit, manual_pred_df, pred_grid, spatial_v
     out_dir <- paste0(res_root, "plots_maps")
     land_color <- "#d9d9d9"
 
-    vast_fit = fit
+    # From ModelDiagnostics_PostFitProjections
+    vast_fit = mod_use
     manual_pred_df = NULL
-    spatial_var = "D_gct"
-    nice_category_names = "Atlantic cod"
-    pred_label = "Obs"
-    mask = mask
-    all_times = all_times
+    pred_grid = NULL
+    spatial_var = "Epsilon1_gct"
+    nice_category_names = "Atlantic Cod - Spatial 1"
+    pred_label = ""
+    mask = mask_use
+    all_times = nice_times
     plot_times = NULL
-    land_sf = land_sf
-    xlim = c(-78.5, -56)
-    ylim = c(35, 48)
-    lab_lat = 36
-    lab_lon = -60
-    panel_or_gif = "gif"
-    out_dir = date_dir
+    land_sf = land_use
+    xlim = c(-78.5, -55)
+    ylim = c(34.5, 48.25)
+    lab_lat = 33.75
+    lab_lon = -67.5
+    panel_or_gif = "panel"
+    out_dir = "~/Desktop/"
     land_color = "#d9d9d9"
-
-
+    panel_cols = 10
+    panel_rows = 11
   }
 
   if (is.null(manual_pred_df)) {
@@ -3970,8 +4019,7 @@ vast_fit_plot_spatial <- function(vast_fit, manual_pred_df, pred_grid, spatial_v
     # Getting spatial information
     if (vast_fit$spatial_list$fine_scale == TRUE) {
       spat_data <- vast_fit$extrapolation_list
-      locs <- data.frame(spat_data$Data_Extrap[which(spat_data$Data_Extrap[, "Include"] > 0), c("Lon", "Lat")]) %>%
-        distinct()
+      locs <- data.frame(spat_data$Data_Extrap[which(spat_data$Data_Extrap[, "Include"] > 0), c("Lon", "Lat")]) 
     } else {
       spat_data <- vast_fit$spatial_list
       locs <- spat_data$latlon_s[1:spat_data$n_x, ]
@@ -3990,14 +4038,16 @@ vast_fit_plot_spatial <- function(vast_fit, manual_pred_df, pred_grid, spatial_v
     rast_lims <- c(min(rasts_range), max(rasts_range))
 
     if (length(dim(pred_array)) == 2) {
-      data_df <- data.frame(locs, z = pred_array)
+      data_df <- data.frame(locs, z = pred_array) %>%
+        distinct(Lon, Lat, X1)
+      names(data_df)[3]<- "z"
 
       # Interpolation
       pred_df <- na.omit(data.frame("x" = data_df$Lon, "y" = data_df$Lat, "layer" = data_df$z))
       pred_df_interp <- interp(pred_df[, 1], pred_df[, 2], pred_df[, 3],
         duplicate = "mean", extrap = TRUE,
-        xo = seq(-87.99457, -57.4307, length = x_dim_length),
-        yo = seq(22.27352, 48.11657, length = y_dim_length)
+        xo = seq(-87.99457, -57.4307, length = 113),
+        yo = seq(22.27352, 48.11657, length = 113)
       )
       pred_df_interp_final <- data.frame(expand.grid(x = pred_df_interp$x, y = pred_df_interp$y), z = c(round(pred_df_interp$z, 2)))
       pred_sp <- st_as_sf(pred_df_interp_final, coords = c("x", "y"), crs = CRS_orig)
@@ -4020,31 +4070,32 @@ vast_fit_plot_spatial <- function(vast_fit, manual_pred_df, pred_grid, spatial_v
       return(plot_out)
     } else {
       for (tI in 1:dim(pred_array)[3]) {
-        data_df <- data.frame(locs, z = pred_array[, 1, tI])
+        data_df <- data.frame(locs, z = pred_array[, 1, tI]) %>%
+        distinct(Lon, Lat, z)
 
         # Interpolation
-        # pred_df <- na.omit(data.frame("x" = data_df$Lon, "y" = data_df$Lat, "layer" = data_df$z))
-        # pred_df_interp <- interp(pred_df[, 1], pred_df[, 2], pred_df[, 3],
-        #   duplicate = "mean", extrap = TRUE,
-        #   xo = seq(-87.99457, -57.4307, length = 113),
-        #   yo = seq(22.27352, 48.11657, length = 133)
-        # )
-        # pred_df_interp_final <- data.frame(expand.grid(x = pred_df_interp$x, y = pred_df_interp$y), z = c(round(pred_df_interp$z, 2)))
-        # pred_sp <- st_as_sf(pred_df_interp_final, coords = c("x", "y"), crs = CRS_orig)
-
-        # pred_df_temp <- pred_sp[which(st_intersects(pred_sp, mask, sparse = FALSE) == TRUE), ]
-        # coords_keep <- as.data.frame(st_coordinates(pred_df_temp))
-        # row.names(coords_keep) <- NULL
-        # pred_df_use <- data.frame(cbind(coords_keep, "z" = as.numeric(pred_df_temp$z)))
-        # names(pred_df_use) <- c("x", "y", "z")
-
-        krig_mod <- Krig(data.frame("x" = data_df$Lon, "y" = data_df$Lat), data_df$z)
-        pred_df_interp <- as.data.frame(interpolate(pred_grid, krig_mod), xy = TRUE)
-        pred_sp <- st_as_sf(pred_df_interp, coords = c("x", "y"), crs = CRS_orig)
+        pred_df <- na.omit(data.frame("x" = data_df$Lon, "y" = data_df$Lat, "layer" = data_df$z))
+        pred_df_interp <- interp(pred_df[, 1], pred_df[, 2], pred_df[, 3],
+          duplicate = "mean", extrap = TRUE,
+          xo = seq(-87.99457, -57.4307, length = 113),
+          yo = seq(22.27352, 48.11657, length = 133)
+        )
+        pred_df_interp_final <- data.frame(expand.grid(x = pred_df_interp$x, y = pred_df_interp$y), z = c(round(pred_df_interp$z, 2)))
+        pred_sp <- st_as_sf(pred_df_interp_final, coords = c("x", "y"), crs = CRS_orig)
 
         pred_df_temp <- pred_sp[which(st_intersects(pred_sp, mask, sparse = FALSE) == TRUE), ]
-        pred_df_use <- data.frame(st_coordinates(pred_df_temp), "z" = as.numeric(pred_df_temp$layer))
+        coords_keep <- as.data.frame(st_coordinates(pred_df_temp))
+        row.names(coords_keep) <- NULL
+        pred_df_use <- data.frame(cbind(coords_keep, "z" = as.numeric(pred_df_temp$z)))
         names(pred_df_use) <- c("x", "y", "z")
+
+        # krig_mod <- Krig(data.frame("x" = data_df$Lon, "y" = data_df$Lat), data_df$z)
+        # pred_df_interp <- as.data.frame(interpolate(pred_grid, krig_mod), xy = TRUE)
+        # pred_sp <- st_as_sf(pred_df_interp, coords = c("x", "y"), crs = CRS_orig)
+
+        # pred_df_temp <- pred_sp[which(st_intersects(pred_sp, mask, sparse = FALSE) == TRUE), ]
+        # pred_df_use <- data.frame(st_coordinates(pred_df_temp), "z" = as.numeric(pred_df_temp$layer))
+        # names(pred_df_use) <- c("x", "y", "z")
 
         time_plot_use <- plot_times[tI]
 
