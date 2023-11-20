@@ -831,7 +831,7 @@ vast_make_coveff <- function(X1_coveff_vec, X2_coveff_vec, Q1_coveff_vec, Q2_cov
 #'
 #' @export
 
-vast_build_sdm <- function(settings, spatial_list = NULL, extrapolation_list = NULL, extrap_grid = NULL, sample_data, covariate_data, X1_formula, X2_formula, X_contrasts, Xconfig_list, catchability_data, Q1_formula, Q2_formula, index_shapes = NULL, spatial_info_dir = NULL) {
+vast_build_sdm <- function(settings, spatial_list = NULL, extrapolation_list = NULL, extrap_grid = NULL, sample_data, covariate_data, X1_formula, X2_formula, X_contrasts, Xconfig_list, catchability_data, Q1_formula, Q2_formula, index_shapes = NULL, spatial_info_dir = NULL, model_selection) {
 
   # For debugging
   if (FALSE) {
@@ -918,7 +918,7 @@ vast_build_sdm <- function(settings, spatial_list = NULL, extrapolation_list = N
   # Run VAST::fit_model with correct info and settings
   # vast_build_out <- fit_model_aja("settings" = settings, "Method" = settings$Method, "input_grid" = extrap_grid, "Lat_i" = sample_data[, "Lat"], "Lon_i" = sample_data[, "Lon"], "t_i" = sample_data[, "Year"], "c_i" = rep(0, nrow(sample_data)), "b_i" = sample_data[, "Biomass"], "a_i" = sample_data[, "Swept"], "PredTF_i" = sample_data[, "Pred_TF"], "X1config_cp" = Xconfig_list[["X1config_cp"]], "X2config_cp" = Xconfig_list[["X2config_cp"]], "covariate_data" = covariate_data, "X1_formula" = X1_formula, "X2_formula" = X2_formula, "X_contrasts" = X_contrasts, "catchability_data" = catchability_data, "Q1_formula" = Q1_formula, "Q2_formula" = Q2_formula, "Q1config_k" = Xconfig_list[["Q1config_k"]], "Q2config_k" = Xconfig_list[["Q2config_k"]], "newtonsteps" = 1, "getsd" = TRUE, "getReportCovariance" = TRUE, "run_model" = FALSE, "test_fit" = FALSE, "Use_REML" = FALSE, "getJointPrecision" = TRUE, "index_shapes" = index_shapes, "DirPath" = spatial_info_dir)
 
-  vast_build_out <- fit_model("settings" = settings, "Method" = settings$Method, "spatial_list" = spatial_list, "extrapolation_list" = extrapolation_list, "input_grid" = extrap_grid, "Lat_i" = sample_data[, "Lat"], "Lon_i" = sample_data[, "Lon"], "t_i" = sample_data[, "Year"], "c_i" = rep(0, nrow(sample_data)), "b_i" = sample_data[, "Biomass"], "a_i" = sample_data[, "Swept"], "PredTF_i" = sample_data[, "Pred_TF"], "X1config_cp" = Xconfig_list[["X1config_cp"]], "X2config_cp" = Xconfig_list[["X2config_cp"]], "covariate_data" = covariate_data, "X1_formula" = X1_formula, "X2_formula" = X2_formula, "X_contrasts" = X_contrasts, "catchability_data" = catchability_data, "Q1_formula" = Q1_formula, "Q2_formula" = Q2_formula, "Q1config_k" = Xconfig_list[["Q1config_k"]], "Q2config_k" = Xconfig_list[["Q2config_k"]], "newtonsteps" = 1, "getsd" = TRUE, "getReportCovariance" = TRUE, "run_model" = FALSE, "test_fit" = FALSE, "Use_REML" = FALSE, "getJointPrecision" = TRUE)
+  vast_build_out <- fit_model("settings" = settings, "Method" = settings$Method, "spatial_list" = spatial_list, "extrapolation_list" = extrapolation_list, "model_selection" = model_selection,"input_grid" = extrap_grid, "Lat_i" = sample_data[, "Lat"], "Lon_i" = sample_data[, "Lon"], "t_i" = sample_data[, "Year"], "c_i" = rep(0, nrow(sample_data)), "b_i" = sample_data[, "Biomass"], "a_i" = sample_data[, "Swept"], "PredTF_i" = sample_data[, "Pred_TF"], "X1config_cp" = Xconfig_list[["X1config_cp"]], "X2config_cp" = Xconfig_list[["X2config_cp"]], "covariate_data" = covariate_data, "X1_formula" = X1_formula, "X2_formula" = X2_formula, "X_contrasts" = X_contrasts, "catchability_data" = catchability_data, "Q1_formula" = Q1_formula, "Q2_formula" = Q2_formula, "Q1config_k" = Xconfig_list[["Q1config_k"]], "Q2config_k" = Xconfig_list[["Q2config_k"]], "newtonsteps" = 1, "getsd" = TRUE, "getReportCovariance" = TRUE, "run_model" = FALSE, "test_fit" = FALSE, "Use_REML" = FALSE, "getJointPrecision" = TRUE)
 
   # Return it
   return(vast_build_out)
@@ -2704,7 +2704,7 @@ make_extrapolation_info_aja <- function(Region, projargs = NA, zone = NA, strata
   return(Return)
 }
 
-fit_model_aja <- function(settings, Method, Lat_i, Lon_i, t_i, b_i, a_i, c_iz = rep(0, length(b_i)), v_i = rep(0, length(b_i)), category_names = NULL, working_dir = paste0(getwd(), "/"), X1config_cp = NULL, X2config_cp = NULL, covariate_data, X1_formula = ~0, X2_formula = ~0, Q1config_k = NULL, Q2config_k = NULL, catchability_data, Q1_formula = ~0, Q2_formula = ~0, newtonsteps = 1, silent = TRUE, build_model = TRUE, run_model = TRUE, test_fit = TRUE, framework = "TMBad", use_new_epsilon = TRUE, model_selection = TRUE, ...) {
+fit_model_aja <- function(settings, Method, Lat_i, Lon_i, t_i, b_i, a_i, c_iz = rep(0, length(b_i)), v_i = rep(0, length(b_i)), category_names = NULL, working_dir = paste0(getwd(), "/"), X1config_cp = NULL, X2config_cp = NULL, covariate_data, X1_formula = ~0, X2_formula = ~0, Q1config_k = NULL, Q2config_k = NULL, catchability_data, Q1_formula = ~0, Q2_formula = ~0, newtonsteps = 1, silent = TRUE, build_model = TRUE, run_model = TRUE, test_fit = TRUE, framework = "TMBad", use_new_epsilon = TRUE, model_selection, ...) {
   if (FALSE) {
     # Run vast_fit_sdm first...
 
