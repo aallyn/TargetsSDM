@@ -2697,7 +2697,7 @@ make_extrapolation_info_aja <- function(Region, projargs = NA, zone = NA, strata
     })
     lonlat_g <- project_coordinates(X = Kmeans$centers[, "E_km"], Y = Kmeans$centers[, "N_km"], projargs = "+proj=longlat +ellps=WGS84", origargs = Return$projargs)
     Data_Extrap <- cbind(Lon = lonlat_g[, 1], Lat = lonlat_g[, 2], Include = Include, Kmeans$centers)
-    Return <- list(a_el = a_el, Data_Extrap = Data_Extrap, zone = Return$zone, projargs = Return$projargs, flip_around_dateline = Return$flip_around_dateline, Area_km2_x = Area_km2_x)
+    Return <- list(a_el = a_el, Data_Extrap = Data_Extrap, zone = Return$zone, projargs = Return$projargs, flip_around_dateline = Return$flip_around_dateline, Area_km2_x = as_units(Area_km2_x, 'km^2'))
   }
   if (length(Region) > 1 & create_strata_per_region == TRUE) {
     Return$a_el <- cbind(Total = rowSums(Return$a_el), Return$a_el)
