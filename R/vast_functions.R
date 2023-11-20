@@ -938,7 +938,7 @@ vast_build_sdm <- function(settings, spatial_list = NULL, extrapolation_list = N
 #'
 #' @export
 
-vast_make_adjustments <- function(vast_build, index_shapes = NULL, spatial_info_dir = NULL, adjustments = NULL) {
+vast_make_adjustments <- function(vast_build, index_shapes = NULL, spatial_info_dir = NULL, adjustments = NULL, model_selection = model_selection) {
 
   # For debugging
   if (FALSE) {
