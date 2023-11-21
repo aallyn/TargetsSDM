@@ -2756,7 +2756,7 @@ fit_model_aja <- function(settings, Method, Lat_i, Lon_i, t_i, b_i, a_i, c_iz = 
     message("\n### Making extrapolation-grid")
     extrapolation_args_default <- list(Region = settings$Region, strata.limits = settings$strata.limits, zone = settings$zone, max_cells = settings$max_cells, DirPath = working_dir)
     extrapolation_args_input <- combine_lists(input = extra_args, default = extrapolation_args_default, args_to_use = formalArgs(make_extrapolation_info_aja))
-    extrapolation_list <- do.call(what = make_extrapolation_info_aja, args = extrapolation_args_input)
+    extrapolation_list <- do.call(what = make_extrapolation_info, args = extrapolation_args_input)
   } else {
     extrapolation_args_input = NULL
     extrapolation_list = extra_args$extrapolation_list
