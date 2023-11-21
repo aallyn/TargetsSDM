@@ -896,12 +896,12 @@ vast_build_sdm <- function(settings, spatial_list = NULL, extrapolation_list = N
 
   # Covariate data frame names
   if (!is.null(covariate_data)) {
-    cov_dat_names1 <- unlist(str_extract_all(format(X1_formula), boundary("word"))[[2]])
+    cov_dat_names1 <- unlist(str_extract_all(format(X1_formula), boundary("word"))[[1]])
 
     # Remove some stuff associated with the splines...
     spline_words <- c("bs", "degree", "df", "knots", "TRUE", "intercept", unique(as.numeric(unlist(str_extract_all(format(X1_formula), pattern = "[0-9]+", simplify = TRUE)))), "FALSE")
     cov_dat_names1 <- cov_dat_names1[-which(cov_dat_names1 %in% spline_words)]
-    cov_dat_names2 <- unlist(str_extract_all(format(X2_formula), boundary("word"))[[2]])
+    cov_dat_names2 <- unlist(str_extract_all(format(X2_formula), boundary("word"))[[1]])
     cov_dat_names2 <- cov_dat_names2[-which(cov_dat_names2 %in% spline_words)]
     cov_dat_names_all <- unique(c(cov_dat_names1, cov_dat_names2))
     if (!(all(cov_dat_names_all %in% names(covariate_data)))) {
