@@ -1308,7 +1308,36 @@ pred_plot_spatial_summary <- function(pred_df, spatial_areas, plot_regions = c("
   return(plot_out)
 }
 
-#' @title Plot VAST model predicted density surfaces
+sf_meshify <- function(input_df, coords = c("Lon", "Lat"), length_km = 25, in_crs = 4326, trans_crs = 32619, square = T){
+  # Make the dataframe an sf class using coordinates
+  in_sf <- st_as_sf(input_df, coords = coords, crs = in_crs, remove = F) %>% 
+    # Transform it to a crs that is projected in meters
+    st_transform(crs = trans_crs)
+  
+  # If we are getting gaps we can buffer here:
+  
+  
+  # Use that data to define a grid with dimensions of length_km*length_km
+  sf_grid <- st_make_grid(
+    x = in_sf,
+    cellsize = c(length_km*1000, length_km*1000), 
+    what = "polygons", 
+    square = square) %>% 
+    # Make the grid an sf class
+    st_as_sf() 
+  
+  # Use the original data to trim it so its just cells that overlap the points
+  sf_out <- sf_grid %>% 
+    st_filter(in_sf, .predicate = st_contains) %>%
+    st_as_sf() 
+    
+  # Join the clipped grid to the dataset
+  sf_out <- st_join(sf_out, in_sf, join = st_intersects)
+  # Return the results  
+  return(sf_out)
+}
+
+#' @title Plot VAST model spatial or spatio-temporal variables
 #'
 #' @description Creates either a panel plot or a gif of VAST model predicted density surfaces
 #'
@@ -1326,30 +1355,30 @@ pred_plot_spatial_summary <- function(pred_df, spatial_areas, plot_regions = c("
 #'
 #' @export
 
-vast_fit_plot_density <- function(vast_fit, nice_category_names, mask, all_times = all_times, plot_times = NULL, land_sf, xlim, ylim, panel_or_gif = "gif", out_dir, land_color = "#d9d9d9", panel_cols = NULL, panel_rows = NULL, ...) {
+vast_fit_plot_variable <- function(vast_fit, variable = "D_gct", mesh_length_km = 35, nice_category_names, all_times = all_times, plot_times = NULL, land_sf, xlim = c(-182500, 1550000), ylim = c(3875000, 5370000), x_lab_coord = 1100000, y_lab_coord = 4000000, panel_or_gif = "gif", out_dir, land_color = "#d9d9d9", panel_cols = NULL, panel_rows = NULL, ...) {
   if (FALSE) {
-    tar_load(vast_fit)
-    template <- raster("~/GitHub/sdm_workflow/scratch/aja/TargetsSDM/data/supporting/HighResTemplate.grd")
-    tar_load(vast_seasonal_data)
-    all_times <- as.character(levels(vast_seasonal_data$VAST_YEAR_SEASON))
-    plot_times <- NULL
-    tar_load(land_sf)
-    tar_load(region_shapefile)
-    mask <- region_shapefile
-    land_color <- "#d9d9d9"
-    res_data_path <- "~/Box/RES_Data/"
-    xlim <- c(-85, -55)
-    ylim <- c(30, 50)
-    panel_or_gif <- "gif"
-    panel_cols <- NULL
-    panel_rows <- NULL
+    vast_fit = mod_comp_res$Fitted_Mod[[2]]
+    nice_category_names = nice_spp_name
+    all_times = dates$Year_Season
+    plot_times = NULL
+    land_sf = land_sf
+    xlim = c(-182500, 1550000)
+    ylim = c(3875000, 5370000)
+    panel_or_gif = "panel"
+    out_dir = date_dir
+    land_color = "#d9d9d9"
+    panel_cols = 7
+    panel_rows = 5
   }
 
   # Plotting at spatial knots...
   # Getting prediction array
-  pred_array <- log(strip_units(vast_fit$Report$D_gct))
-  pred_array<- ifelse(pred_array == -Inf, NA, pred_array)
-
+  if(variable == "D_gct"){
+    pred_array <- log(strip_units(vast_fit$Report$D_gct))
+    pred_array<- ifelse(pred_array == -Inf, NA, pred_array)
+    var_name<- "Log (density)"
+  }
+ 
   # Getting time info
   if (!is.null(plot_times)) {
     plot_times <- all_times[which(all_times) %in% plot_times]
@@ -1360,14 +1389,11 @@ vast_fit_plot_density <- function(vast_fit, nice_category_names, mask, all_times
   # Getting spatial information
   spat_data <- vast_fit$extrapolation_list
   loc_g <- spat_data$Data_Extrap[which(spat_data$Data_Extrap[, "Include"] > 0), c("Lon", "Lat")]
-  CRS_orig <- sp::CRS("+proj=longlat")
-  CRS_proj <- sp::CRS(spat_data$projargs)
-  land_sf <- st_crop(land_sf, xmin = xlim[1], ymin = ylim[1], xmax = xlim[2], ymax = ylim[2])
 
   # Looping through...
-  rasts_out <- vector("list", dim(pred_array)[3])
-  rasts_range <- pred_array
-  rast_lims <- c(0, round(max(rasts_range) + 0.0000001, 2))
+  plots_out <- vector("list", dim(pred_array)[3])
+  var_range <- pred_array
+  var_lims <- c(round(min(var_range) - 0.0000001), round(max(var_range) + 0.0000001, 2))
 
   if (dim(pred_array)[3] == 1) {
     data_df <- data.frame(loc_g, z = pred_array[, 1, ])
@@ -1405,41 +1431,25 @@ vast_fit_plot_density <- function(vast_fit, nice_category_names, mask, all_times
   } else {
     for (tI in 1:dim(pred_array)[3]) {
       data_df <- data.frame(loc_g, z = pred_array[, 1, tI])
+      
+      pred_sf<- sf_meshify(data_df, length_km = mesh_length_km, trans_crs = st_crs(paste0("+proj=utm +zone=", utm_zone, " +ellps=WGS84 +datum=WGS84 +units=m +no_defs ")), square = FALSE) 
 
-      # Interpolation
-      pred_df <- na.omit(data.frame("x" = data_df$Lon, "y" = data_df$Lat, "layer" = data_df$z))
-      pred_df_interp <- interp(pred_df[, 1], pred_df[, 2], pred_df[, 3],
-        duplicate = "mean", extrap = TRUE,
-        xo = seq(-87.99457, -57.4307, length = 115),
-        yo = seq(22.27352, 48.11657, length = 133)
-      )
-      pred_df_interp_final <- data.frame(expand.grid(x = pred_df_interp$x, y = pred_df_interp$y), z = c(round(pred_df_interp$z, 2)))
-      pred_sp <- st_as_sf(pred_df_interp_final, coords = c("x", "y"), crs = CRS_orig)
-
-      pred_df_temp <- pred_sp[which(st_intersects(pred_sp, mask, sparse = FALSE) == TRUE), ]
-      coords_keep <- as.data.frame(st_coordinates(pred_df_temp))
-      row.names(coords_keep) <- NULL
-      pred_df_use <- data.frame(cbind(coords_keep, "z" = as.numeric(pred_df_temp$z)))
-      names(pred_df_use) <- c("x", "y", "z")
-
-      # raster_proj<- raster::rasterize(as_Spatial(points_ll), template, field = "z", fun = mean)
-      # raster_proj<- as.data.frame(raster_proj, xy = TRUE)
-      #
       time_plot_use <- plot_times[tI]
 
-      rasts_out[[tI]] <- ggplot() +
-        geom_tile(data = pred_df_use, aes(x = x, y = y, fill = z)) +
-        scale_fill_viridis_c(name = "Log (density+1)", option = "viridis", na.value = "transparent", limits = rast_lims) +
-        annotate("text", x = -65, y = 37.5, label = time_plot_use) +
-        geom_sf(data = land_sf, fill = land_color, lwd = 0.2, na.rm = TRUE) +
-        coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
-        theme(panel.background = element_rect(fill = "white"), panel.border = element_rect(fill = NA), axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), plot.margin = margin(t = 0.05, r = 0.05, b = 0.05, l = 0.05, unit = "pt"))
+      text_df<- data.frame("Lon" = x_lab_coord, "Lat" = y_lab_coord, "hjust" = 0, "vjust" = 0, "text" = time_plot_use)
+
+      plots_out[[tI]] <- ggplot() +
+        geom_sf(data = pred_sf, aes(geometry = geometry, fill = z), color = "transparent") +
+        scale_fill_viridis_c(name = var_name, option = "magma", na.value = "transparent", limits = var_lims) +
+        geom_sf(data = land_sf, aes(geometry = geometry), fill = land_color, lwd = 0.2, na.rm = TRUE) +
+        geom_text(data = text_df, aes(label = text, x = Lon, y = Lat, hjust = hjust, vjust = vjust)) +
+        coord_sf(xlim = xlim, ylim = ylim, expand = F, crs = 32619) +
+        theme(panel.background = element_rect(fill = "white"), panel.border = element_rect(fill = NA), axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), plot.margin = margin(t = 0.05, r = 0.05, b = 0.05, l = 0.05, unit = "pt")) 
     }
     if (panel_or_gif == "panel") {
       # Panel plot
-      all_plot <- wrap_plots(rasts_out, ncol = panel_cols, nrow = panel_rows, guides = "collect", theme(plot.margin = margin(t = 0.05, r = 0.05, b = 0.05, l = 0.05, unit = "pt")))
-      ggsave(filename = paste0(out_dir, "/", nice_category_names, "_LogDensity.png"), all_plot, width = 11, height = 8, units = "in")
-      return(all_plot)
+      all_plot <- wrap_plots(plots_out, ncol = panel_cols, nrow = panel_rows, guides = "collect", theme(plot.margin = margin(t = 0.05, r = 0.05, b = 0.05, l = 0.05, unit = "pt")))
+      ggsave(filename = paste0(out_dir, "/", nice_category_names, "_", var_name, ".png"), all_plot, width = 11, height = 8, units = "in")
     } else {
       # Make a gif
       plot_loop_func <- function(plot_list) {
@@ -1448,7 +1458,7 @@ vast_fit_plot_density <- function(vast_fit, nice_category_names, mask, all_times
           print(plot_use)
         }
       }
-      invisible(save_gif(plot_loop_func(rasts_out), paste0(out_dir, "/", nice_category_names, "_LogDensity.gif"), delay = 0.75, progress = FALSE))
+      invisible(save_gif(plot_loop_func(plots_out), paste0(out_dir, "/", nice_category_names, "_", var_name, ".gif"), delay = 0.75, progress = FALSE))
     }
   }
 }
