@@ -1347,7 +1347,7 @@ vast_fit_plot_density <- function(vast_fit, nice_category_names, mask, all_times
 
   # Plotting at spatial knots...
   # Getting prediction array
-  pred_array <- log(vast_fit$Report$D_gct)
+  pred_array <- log(strip_units(vast_fit$Report$D_gct))
   pred_array<- ifelse(pred_array == -Inf, NA, pred_array)
 
   # Getting time info
