@@ -1358,6 +1358,8 @@ sf_meshify <- function(input_df, coords = c("Lon", "Lat"), length_km = 25, in_cr
 vast_fit_plot_variable <- function(vast_fit, variable = "D_gct", mesh_length_km = 35, nice_category_names, all_times = all_times, plot_times = NULL, land_sf, xlim = c(-182500, 1550000), ylim = c(3875000, 5370000), x_lab_coord = 1100000, y_lab_coord = 4000000, panel_or_gif = "gif", out_dir, land_color = "#d9d9d9", panel_cols = NULL, panel_rows = NULL, ...) {
   if (FALSE) {
     vast_fit = mod_comp_res$Fitted_Mod[[2]]
+    variable<- "D_gct"
+    mesh_length_km = 35
     nice_category_names = nice_spp_name
     all_times = dates$Year_Season
     plot_times = NULL
@@ -1396,38 +1398,21 @@ vast_fit_plot_variable <- function(vast_fit, variable = "D_gct", mesh_length_km 
   var_lims <- c(round(min(var_range) - 0.0000001), round(max(var_range) + 0.0000001, 2))
 
   if (dim(pred_array)[3] == 1) {
-    data_df <- data.frame(loc_g, z = pred_array[, 1, ])
+    data_df <- data.frame(loc_g, z = pred_array[, 1, tI])
+      
+    pred_sf<- sf_meshify(data_df, length_km = mesh_length_km, trans_crs = st_crs(paste0("+proj=utm +zone=", utm_zone, " +ellps=WGS84 +datum=WGS84 +units=m +no_defs ")), square = FALSE) 
 
-    # Interpolation
-    pred_df <- na.omit(data.frame("x" = data_df$Lon, "y" = data_df$Lat, "layer" = data_df$z))
-    pred_df_interp <- interp(pred_df[, 1], pred_df[, 2], pred_df[, 3],
-      duplicate = "mean", extrap = TRUE,
-      xo = seq(-87.99457, -57.4307, length = 115),
-      yo = seq(22.27352, 48.11657, length = 133)
-    )
-    pred_df_interp_final <- data.frame(expand.grid(x = pred_df_interp$x, y = pred_df_interp$y), z = c(round(pred_df_interp$z, 2)))
-    pred_sp <- st_as_sf(pred_df_interp_final, coords = c("x", "y"), crs = CRS_orig)
-
-    pred_df_temp <- pred_sp[which(st_intersects(pred_sp, mask, sparse = FALSE) == TRUE), ]
-    coords_keep <- as.data.frame(st_coordinates(pred_df_temp))
-    row.names(coords_keep) <- NULL
-    pred_df_use <- data.frame(cbind(coords_keep, "z" = as.numeric(pred_df_temp$z)))
-    names(pred_df_use) <- c("x", "y", "z")
-
-    # raster_proj<- raster::rasterize(as_Spatial(points_ll), template, field = "z", fun = mean)
-    # raster_proj<- as.data.frame(raster_proj, xy = TRUE)
-    #
     time_plot_use <- plot_times
 
     plot_out <- ggplot() +
-      geom_tile(data = pred_df_use, aes(x = x, y = y, fill = z)) +
-      scale_fill_viridis_c(name = "Log (density+1)", option = "viridis", na.value = "transparent", limits = rast_lims) +
-      annotate("text", x = -65, y = 37.5, label = time_plot_use) +
-      geom_sf(data = land_sf, fill = land_color, lwd = 0.2, na.rm = TRUE) +
-      coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
-      theme(panel.background = element_rect(fill = "white"), panel.border = element_rect(fill = NA), axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), plot.margin = margin(t = 0.05, r = 0.05, b = 0.05, l = 0.05, unit = "pt"))
+        geom_sf(data = pred_sf, aes(geometry = geometry, fill = z), color = "transparent") +
+        scale_fill_viridis_c(name = var_name, option = "magma", na.value = "transparent", limits = var_lims) +
+        geom_sf(data = land_sf, aes(geometry = geometry), fill = land_color, lwd = 0.2, na.rm = TRUE) +
+        annotate(geom = 'text', label = {{time_plot_use}}, x = Inf, y = -Inf, hjust = 1.25, vjust = -1, size = 2.5) +
+        coord_sf(xlim = xlim, ylim = ylim, expand = F, crs = 32619) +
+        theme(panel.background = element_rect(fill = "white"), panel.border = element_rect(fill = NA), axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), plot.margin = margin(t = 0.05, r = 0.05, b = 0.05, l = 0.05, unit = "pt")) 
 
-    ggsave(filename = paste(out_dir, nice_category_names, ".png", sep = "/"), plot_out, width = 11, height = 8, units = "in")
+    ggsave(filename = paste(out_dir, nice_category_names, "_", var_name, ".png", sep = "/"), plot_out, width = 11, height = 8, units = "in")
   } else {
     for (tI in 1:dim(pred_array)[3]) {
       data_df <- data.frame(loc_g, z = pred_array[, 1, tI])
@@ -1436,13 +1421,11 @@ vast_fit_plot_variable <- function(vast_fit, variable = "D_gct", mesh_length_km 
 
       time_plot_use <- plot_times[tI]
 
-      text_df<- data.frame("Lon" = x_lab_coord, "Lat" = y_lab_coord, "hjust" = 0, "vjust" = 0, "text" = time_plot_use)
-
       plots_out[[tI]] <- ggplot() +
         geom_sf(data = pred_sf, aes(geometry = geometry, fill = z), color = "transparent") +
         scale_fill_viridis_c(name = var_name, option = "magma", na.value = "transparent", limits = var_lims) +
         geom_sf(data = land_sf, aes(geometry = geometry), fill = land_color, lwd = 0.2, na.rm = TRUE) +
-        geom_text(data = text_df, aes(label = text, x = Lon, y = Lat, hjust = hjust, vjust = vjust)) +
+        annotate(geom = 'text', label = {{time_plot_use}}, x = Inf, y = -Inf, hjust = 1.25, vjust = -1, size = 2.5) +
         coord_sf(xlim = xlim, ylim = ylim, expand = F, crs = 32619) +
         theme(panel.background = element_rect(fill = "white"), panel.border = element_rect(fill = NA), axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), plot.margin = margin(t = 0.05, r = 0.05, b = 0.05, l = 0.05, unit = "pt")) 
     }
