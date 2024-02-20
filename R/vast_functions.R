@@ -511,6 +511,8 @@ vast_make_extrap_grid <- function(region_shapefile, index_shapes, cell_size) {
     cell_size <- 5000
   }
 
+  print(sf_use_s2())
+
   # Transform crs of shapefile to common WGS84 lon/lat format.
   region_wgs84 <- st_make_valid(region_shapefile)
   st_is_valid(region_shapefile)
