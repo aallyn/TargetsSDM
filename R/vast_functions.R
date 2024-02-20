@@ -512,7 +512,7 @@ vast_make_extrap_grid <- function(region_shapefile, index_shapes, cell_size) {
   }
 
   # Transform crs of shapefile to common WGS84 lon/lat format.
-  region_wgs84 <- region_shapefile
+  region_wgs84 <- st_make_valid(region_shapefile)
 
   # Get UTM zone
   lon <- sum(st_bbox(region_wgs84)[c(1, 3)]) / 2
@@ -538,7 +538,7 @@ vast_make_extrap_grid <- function(region_shapefile, index_shapes, cell_size) {
     # Adding in the a strata/region component for stratified abundance. This will depend on index_shapes input.
     if (!is.null(index_shapes)) {
       extrap_grid <- extrap_grid %>%
-        st_join(., index_shapes, join = st_within) %>%
+        st_join(., st_make_valid(index_shapes), join = st_within) %>%
         mutate(.,
           "Lon" = as.numeric(st_coordinates(.)[, 1]),
           "Lat" = as.numeric(st_coordinates(.)[, 2])
