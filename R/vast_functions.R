@@ -513,6 +513,8 @@ vast_make_extrap_grid <- function(region_shapefile, index_shapes, cell_size) {
 
   # Transform crs of shapefile to common WGS84 lon/lat format.
   region_wgs84 <- st_make_valid(region_shapefile)
+  st_is_valid(region_shapefile)
+  all(st_is_valid(index_shapes))
 
   # Get UTM zone
   lon <- sum(st_bbox(region_wgs84)[c(1, 3)]) / 2
@@ -523,7 +525,7 @@ vast_make_extrap_grid <- function(region_shapefile, index_shapes, cell_size) {
   region_utm <- st_transform(region_wgs84, crs = crs_utm)
 
   # Make extrapolation grid with sf
-    region_grid <- st_as_sf(st_make_grid(region_utm, cellsize = cell_size, what = "centers"), crs = crs_utm)
+	region_grid <- st_as_sf(st_make_grid(region_utm, cellsize = cell_size, what = "centers"), crs = crs_utm)
 
     # Now get only the points that fall within the shape polygon
     points_keep <- data.frame("pt_row" = seq(from = 1, to = nrow(region_grid), by = 1), "in_out" = st_intersects(region_grid, region_utm, sparse = FALSE))
