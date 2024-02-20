@@ -511,12 +511,10 @@ vast_make_extrap_grid <- function(region_shapefile, index_shapes, cell_size) {
     cell_size <- 5000
   }
 
-  print(sf_use_s2())
+  sf::sf_use_s2(FALSE)
 
   # Transform crs of shapefile to common WGS84 lon/lat format.
   region_wgs84 <- st_make_valid(region_shapefile)
-  st_is_valid(region_shapefile)
-  all(st_is_valid(index_shapes))
 
   # Get UTM zone
   lon <- sum(st_bbox(region_wgs84)[c(1, 3)]) / 2
