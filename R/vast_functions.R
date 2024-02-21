@@ -1845,8 +1845,6 @@ make_new_cov_data<- function(vast_fit = vast_fit, climate_scenario = climate_sce
         #     dplyr::select(., Year, Year_Cov, Season, Depth, BT_seasonal, Lat, Lon)
         new_cov_dat <- cmip6_dat 
         new_cov_dat$Season <- factor(new_cov_dat$Season, levels = levels(vast_fit$covariate_data$Season))
-	new_cov_dat<- new_cov_dat %>%
-	   drop_na(Season)
         
         # Make sure we have the right "year" index
         # match_year_cov <- vast_fit$covariate_data %>%
@@ -1877,7 +1875,7 @@ make_new_catch_data<- function(vast_fit = vast_fit, climate_scenario = climate_s
    new_cov_dat <- cmip6_dat %>%
      dplyr::select(., Year, Year_Cov, Season, Depth, BT_seasonal, Lat, Lon)
    new_cov_dat$Season <- factor(new_cov_dat$Season, levels = levels(vast_fit$covariate_data$Season))
-    
+
     # Make sure we have the right "year" index
     # Make sure we have the right "year" index
     match_year_cov <- vast_fit$covariate_data %>%
